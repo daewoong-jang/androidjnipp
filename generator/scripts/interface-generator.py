@@ -146,6 +146,16 @@ managed_files_suffix = 'Managed'
 any_object = '$ANYOBJECT'
 cpp_string = '$CPPSTRING'
 
+annotate_abstract = 'AbstractNativeMethod'
+annotate_api = 'API'
+annotate_ctor = 'NativeConstructor'
+annotate_dtor = 'NativeDestructor'
+annotate_export = 'NativeExportMacro'
+annotate_namespace = 'NativeNamespace'
+annotate_ptr = 'NativeObjectField'
+annotate_visible_field = 'AccessedByNative'
+annotate_visible_method = 'CalledByNative'
+
 def puts(ts, *args):
     if args is not None:
         argc = 1
@@ -219,9 +229,9 @@ class SourceFile:
         return self.parsed_tree
 
 ClassExport = collections.namedtuple('ClassExport', 'decl alias')
-NativeConstructor = collections.namedtuple('NativeConstructor', 'name parameters is_abstract')
-NativeDestructor = collections.namedtuple('NativeDestructor', 'name parameters is_abstract')
-NativeObjectField = collections.namedtuple('NativeObjectField', 'name base_type')
+NativeConstructor = collections.namedtuple(annotate_ctor, 'name parameters is_abstract')
+NativeDestructor = collections.namedtuple(annotate_dtor, 'name parameters is_abstract')
+NativeObjectField = collections.namedtuple(annotate_ptr, 'name base_type')
 NativeMethod = collections.namedtuple('NativeMethod', 'name parameters is_static is_abstract return_type')
 NativeField = collections.namedtuple('NativeField', 'name initializer base_type')
 NativeMethodRegistry = collections.namedtuple('NativeMethodRegistry', 'name signatures function_name')
@@ -521,7 +531,7 @@ class GeneratorBackend:
         LOG.V('processNamespaceEnd: ' + name)
         self.namespace_stack.pop()
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
         LOG.V('processClassBegin: ' + name)
         self.class_attribute_stack.append(self.class_attribute)
         self.class_name_stack.append(name)
@@ -542,7 +552,7 @@ class GeneratorBackend:
         self.class_attribute = self.class_attribute_stack.pop()
         self.class_name_stack.pop()
 
-    def processConstructor(self, called_by_native, parameters):
+    def processConstructor(self, is_visible, parameters):
         LOG.V('processConstructor: ')
 
     def processNativeConstructor(self, name, parameters, is_abstract):
@@ -560,7 +570,7 @@ class GeneratorBackend:
         assert(self.class_attribute.native_object_field is None)
         self.class_attribute.native_object_field = NativeObjectField(name, base_type)
 
-    def processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters):
+    def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters):
         LOG.V('processMethod: ' + name)
         if is_abstract and not self.class_attribute.has_abstract_method:
             self.class_attribute.has_abstract_method = True
@@ -748,14 +758,14 @@ class GeneratorFrontend:
         for word in reversed(words):
             self.backend.processNamespaceEnd(word)
 
-    def processMethod(self, called_by_native, is_static, is_abstract, is_native, return_type, name, parameters):
-        self.backend.processNativeMethod(is_static, is_abstract, return_type, name, parameters) if is_native else self.backend.processMethod(called_by_native, is_static, is_abstract, return_type, name, parameters)
+    def processMethod(self, is_visible, is_static, is_api, is_abstract, is_native, return_type, name, parameters):
+        self.backend.processNativeMethod(is_static, is_abstract, return_type, name, parameters) if is_native else self.backend.processMethod(is_visible, is_static, is_api, is_abstract, return_type, name, parameters)
 
     def processClass(self, type_declaration):
-        if not hasAnnotation(type_declaration, 'NativeNamespace'):
+        if not hasAnnotation(type_declaration, annotate_namespace):
             return
 
-        namespace_path = getAnnotationValue(type_declaration, 'NativeNamespace')
+        namespace_path = getAnnotationValue(type_declaration, annotate_namespace)
         if namespace_path is None:
             return
 
@@ -767,7 +777,7 @@ class GeneratorFrontend:
         def hasNativeConstructors():
             for declaration in type_declaration.body:
                 if type(declaration) is m.MethodDeclaration:
-                    if hasAnnotation(declaration, 'NativeConstructor') or hasAnnotation(declaration, 'NativeDestructor'):
+                    if hasAnnotation(declaration, annotate_ctor) or hasAnnotation(declaration, annotate_dtor):
                         return True
             return False
 
@@ -781,9 +791,9 @@ class GeneratorFrontend:
 
         has_trivial_constructor = hasTrivialConstructor()
 
-        native_export_macro = getAnnotationValue(type_declaration, 'NativeExportMacro') if hasAnnotation(type_declaration, 'NativeExportMacro') else None
+        export_macro = getAnnotationValue(type_declaration, annotate_export) if hasAnnotation(type_declaration, annotate_export) else None
 
-        self.backend.processClassBegin(type_declaration.name, native_export_macro, getTypeName(type_declaration.extends),
+        self.backend.processClassBegin(type_declaration.name, export_macro, getTypeName(type_declaration.extends),
                                        class_type_parameters, has_trivial_constructor, hasNativeConstructors())
 
         if has_trivial_constructor:
@@ -791,35 +801,36 @@ class GeneratorFrontend:
 
         for declaration in type_declaration.body:
             if type(declaration) is m.ConstructorDeclaration:
-                self.backend.processConstructor(hasAnnotation(declaration, 'CalledByNative')
+                self.backend.processConstructor(hasAnnotation(declaration, annotate_visible_method)
                                            , makeParameterList(declaration))
             elif type(declaration) is m.MethodDeclaration:
-                if hasAnnotation(declaration, 'NativeConstructor'):
+                if hasAnnotation(declaration, annotate_ctor):
                     assert(not hasModifier(declaration, 'static'))
                     assert(declaration.return_type == 'void')
                     self.backend.processNativeConstructor(declaration.name
                                                           , makeParameterList(declaration)
-                                                          , hasAnnotation(declaration, 'AbstractMethod'))
-                elif hasAnnotation(declaration, 'NativeDestructor'):
+                                                          , hasAnnotation(declaration, annotate_abstract))
+                elif hasAnnotation(declaration, annotate_dtor):
                     assert(not hasModifier(declaration, 'static'))
                     assert(declaration.return_type == 'void')
                     self.backend.processNativeDestructor(declaration.name
                                                          , makeParameterList(declaration)
-                                                         , hasAnnotation(declaration, 'AbstractMethod'))
+                                                         , hasAnnotation(declaration, annotate_abstract))
                 else:
-                    self.processMethod(hasAnnotation(declaration, 'CalledByNative')
+                    self.processMethod(hasAnnotation(declaration, annotate_visible_method)
                                           , hasModifier(declaration, 'static')
-                                          , hasAnnotation(declaration, 'AbstractMethod')
+                                          , hasAnnotation(declaration, annotate_api)
+                                          , hasAnnotation(declaration, annotate_abstract)
                                           , hasModifier(declaration, 'native')
                                           , declaration.return_type, declaration.name
                                           , makeParameterList(declaration))
             elif type(declaration) is m.FieldDeclaration:
-                if hasAnnotation(declaration, 'NativeObjectField'):
+                if hasAnnotation(declaration, annotate_ptr):
                     assert(not hasModifier(declaration, 'static'))
                     assert(not hasModifier(declaration, 'final'))
                     self.backend.processNativeObjectField(declaration.variable_declarators[0].variable.name, getTypeName(declaration.type))
                 else:
-                    self.backend.processField(hasAnnotation(declaration, 'AccessedByNative')
+                    self.backend.processField(hasAnnotation(declaration, annotate_visible_field)
                                          , hasModifier(declaration, 'static')
                                          , hasModifier(declaration, 'final')
                                          , getTypeName(declaration.type)
@@ -920,8 +931,8 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
                                              })
         self.puts(ts)
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        HeaderGeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        HeaderGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
         extends = None  # Disable extends
         base_class = extends if extends is not None else self.overrides.commonBaseClass()
@@ -944,7 +955,7 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         "")
         self.puts('\n'.join(ts),
                   '' if base_class is None else ' '.join([' :', 'public', base_class]),
-                  '' if native_export_macro is None else ' '.join(['', native_export_macro]))
+                  '' if export_macro is None else ' '.join(['', export_macro]))
 
         self.setVisibility(Visibility.PUBLIC)
         self.INC()
@@ -964,7 +975,8 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         self.setVisibility(Visibility.PUBLIC)
         ts = (
         "// TODO: DEFINE PRIVATE CLASS(IF NEEDED)",
-        "class Private { public: virtual ~Private() { } };"
+        "class Private { public: virtual ~Private() { } };",
+        "template<typename T> T& p() { return static_cast<T&>(*m_private); }"
         "")
         self.INC()
         self.puts('\n'.join(ts))
@@ -1006,9 +1018,9 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         self.template = self.template.replace("$INVOKE_NATIVE_DESTRUCTOR", ' ')
         GeneratorBackend.processClassEnd(self, name)
 
-    def processConstructor(self, called_by_native, parameters):
-        HeaderGeneratorBackend.processConstructor(self, called_by_native, parameters)
-        if called_by_native is False:
+    def processConstructor(self, is_visible, parameters):
+        HeaderGeneratorBackend.processConstructor(self, is_visible, parameters)
+        if is_visible is False:
             return
 
         self.setVisibility(Visibility.PUBLIC)
@@ -1024,9 +1036,9 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         HeaderGeneratorBackend.processNativeObjectField(self, name, base_type)
         self.processField(True, False, False, base_type, 0, None, name)
 
-    def processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters):
-        HeaderGeneratorBackend.processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters)
-        if called_by_native is False:
+    def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters):
+        HeaderGeneratorBackend.processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters)
+        if is_visible is False:
             return
 
         self.setVisibility(Visibility.PUBLIC)
@@ -1171,8 +1183,8 @@ class NativesHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
         self.puts("$CLASS_IMPORT_HEADERS")
         self.EOL()
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        InterfaceHeaderGeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        InterfaceHeaderGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
         self.INC()
         if not self.class_attribute.has_native_constructors:
@@ -1183,6 +1195,8 @@ class NativesHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
         ts = (
         "static $LOCAL_REF<$CLASS_PATH> fromRef(JNI::ref_t);",
         "static $LOCAL_REF<$CLASS_PATH> fromPtr(std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>&);",
+        "template<typename... Args> static $LOCAL_REF<$CLASS_PATH> create(Args... arguments);",
+        "template<typename T> T castTo();",
         "")
         self.puts('\n'.join(ts))
         self.DEC()
@@ -1258,8 +1272,8 @@ class ManagedHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
             self.puts("CLASS_EXPORT virtual void INIT(%1);\n", self.buildParameters(constructor, True))
         self.EOL()
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        InterfaceHeaderGeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        InterfaceHeaderGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
         ts = (
         "template<typename T, typename... Args> static inline std::shared_ptr<T> create(Args&&... arguments)",
@@ -1310,15 +1324,15 @@ class ManagedHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
 
         InterfaceHeaderGeneratorBackend.processClassEnd(self, name)
 
-    def processConstructor(self, called_by_native, parameters):
-        InterfaceHeaderGeneratorBackend.processConstructor(self, called_by_native, parameters)
-        if not called_by_native:
+    def processConstructor(self, is_visible, parameters):
+        InterfaceHeaderGeneratorBackend.processConstructor(self, is_visible, parameters)
+        if not is_visible:
             return
 
         self.constructors.append(parameters)
 
-    def processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters):
-        InterfaceHeaderGeneratorBackend.processMethod(self, called_by_native or is_abstract, is_static, is_abstract, return_type, name, parameters)
+    def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters):
+        InterfaceHeaderGeneratorBackend.processMethod(self, is_visible or is_abstract or is_api, is_static, is_api, is_abstract, return_type, name, parameters)
 
     def processNativeConstructor(self, name, parameters, is_abstract):
         InterfaceHeaderGeneratorBackend.processNativeConstructor(self, name, parameters, is_abstract)
@@ -1363,7 +1377,7 @@ class StubGeneratorBackend(GeneratorBackend):
     def implementNativeBinding(self, is_static, is_abstract, return_type, name, parameters):
         return
 
-    def implementConstruction(self, called_by_native, parameters):
+    def implementConstruction(self, is_visible, parameters):
         return
 
     def implementMethodInvocation(self, function_name, is_static, return_type, parameters):
@@ -1390,8 +1404,8 @@ class StubGeneratorBackend(GeneratorBackend):
         GeneratorBackend.processNamespaceEnd(self, name)
         self.puts("} // namespace %1\n", name)
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        GeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        GeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
         ts = (
         "namespace $INTERNAL_NAMESPACE {",
         "",
@@ -1480,9 +1494,9 @@ class StubGeneratorBackend(GeneratorBackend):
 
         GeneratorBackend.processClassEnd(self, name)
 
-    def processConstructor(self, called_by_native, parameters):
-        GeneratorBackend.processConstructor(self, called_by_native, parameters)
-        if called_by_native is False:
+    def processConstructor(self, is_visible, parameters):
+        GeneratorBackend.processConstructor(self, is_visible, parameters)
+        if is_visible is False:
             return
 
         ts = (
@@ -1491,7 +1505,7 @@ class StubGeneratorBackend(GeneratorBackend):
         "")
         self.puts('\n'.join(ts), self.buildParameters(parameters, True))
         self.INC()
-        self.implementConstruction(called_by_native, parameters)
+        self.implementConstruction(is_visible, parameters)
         self.DEC()
         self.puts("}\n")
         self.EOL()
@@ -1500,9 +1514,9 @@ class StubGeneratorBackend(GeneratorBackend):
         GeneratorBackend.processNativeObjectField(self, name, base_type)
         self.processField(True, False, False, base_type, 0, None, name)
 
-    def processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters):
-        GeneratorBackend.processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters)
-        if called_by_native is False:
+    def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters):
+        GeneratorBackend.processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters)
+        if is_visible is False:
             return
 
         ts = (
@@ -1641,7 +1655,7 @@ class NativesCPPStubGeneratorBackend(StubGeneratorBackend):
         self.puts(''.join([ts, ';']))
         self.EOL()
 
-    def implementConstruction(self, called_by_native, parameters):
+    def implementConstruction(self, is_visible, parameters):
         self.puts("return fromPtr($EXTERNAL_NAMESPACE::$CLASS_PATH::create(%1));\n", self.buildArguments(parameters, True))
 
     def implementMethodInvocation(self, function_name, is_static, return_type, parameters):
@@ -1671,8 +1685,8 @@ class NativesCPPStubGeneratorBackend(StubGeneratorBackend):
         self.EOL()
         self.EOL()
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        StubGeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        StubGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
         ts = (
         "$LOCAL_REF<$CLASS_PATH> $CLASS_PATH::fromRef(JNI::ref_t ref)",
@@ -1889,7 +1903,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         self.puts(ts)
         self.EOL()
 
-    def implementConstruction(self, called_by_native, parameters):
+    def implementConstruction(self, is_visible, parameters):
         ts = (
         "static jmethodID mid = $JNIENV->GetMethodID($CLASS_ID",
         "    , \"<init>\"",
@@ -1955,8 +1969,8 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         name_parts = string.split(name, '.')
         jni_signature_map.mapType(name_parts[-1], [''.join(['L', '/'.join(name_parts), ';'])])
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        StubGeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        StubGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
         ts = (
         "$LOCAL_REF<$CLASS_PATH> $CLASS_PATH::fromRef(JNI::ref_t ref)",
@@ -2078,7 +2092,7 @@ class ManagedCPPStubGeneratorBackend(StubGeneratorBackend):
         self.puts(''.join([ts, ';']))
         self.EOL()
 
-    def implementConstruction(self, called_by_native, parameters):
+    def implementConstruction(self, is_visible, parameters):
         self.implementInitialization("CTOR()", "uninitialized->INIT($ARGUMENTS)".replace('$ARGUMENTS', self.buildArguments(parameters, False)))
         self.EOL()
 
@@ -2114,8 +2128,8 @@ class ManagedCPPStubGeneratorBackend(StubGeneratorBackend):
         self.EOL()
         self.EOL()
 
-    def processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
-        StubGeneratorBackend.processClassBegin(self, name, native_export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
+    def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
+        StubGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
         ts = (
         "static std::function<$CLASS_PATH* ()> s_factory;",
@@ -2177,8 +2191,8 @@ class ManagedCPPStubGeneratorBackend(StubGeneratorBackend):
         StubGeneratorBackend.processNativeDestructor(self, name, parameters, is_abstract)
         self.implementNativeDestructor(name)
 
-    def processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters):
-        GeneratorBackend.processMethod(self, called_by_native, is_static, is_abstract, return_type, name, parameters)
+    def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters):
+        GeneratorBackend.processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters)
 
     def processNativeMethod(self, is_static, is_abstract, return_type, name, parameters):
         StubGeneratorBackend.processNativeMethod(self, is_static, is_abstract, return_type, name, parameters)

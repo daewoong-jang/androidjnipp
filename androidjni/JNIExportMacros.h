@@ -29,6 +29,9 @@
 #if defined(JNI_STATIC)
 #define JNI_EXPORT
 #else
+#if !defined(JNI_SHARED)
+#define JNI_SHARED 1
+#endif
 #if defined(JNI_EXPORTS) || defined(BUILDING_JNILIB)
 #define JNI_EXPORT __declspec(dllexport)
 #else
