@@ -1,6 +1,7 @@
 set(ANDROIDJNI_HEADERS
     Abbreviations.h
     AnyObject.h
+    Construction.h
     GlobalRef.h
     JNIExportMacros.h
     JNIIncludes.h

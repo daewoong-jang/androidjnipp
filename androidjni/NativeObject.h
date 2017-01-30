@@ -26,8 +26,12 @@
 #pragma once
 
 #include "AnyObject.h"
+#include "Construction.h"
 
 namespace JNI {
+
+template<typename T>
+class PassLocalRef;
 
 class JNI_EXPORT NativeObject : public AnyObject {
 public:
@@ -67,6 +71,16 @@ template<> inline AnyObject* getPtr<AnyObject>(ref_t, NativeObject* ptr)
 template<typename T> inline T* adoptPtr(ref_t ref, NativeObject* ptr)
 {
     return getPtr<T>(ref, ptr);
+}
+
+template<typename T, typename... P> inline PassLocalRef<T> wrapper(P... params)
+{
+    return T::create<typename normalize_creation_param<P>::type...>(std::forward<P>(params)...);
+}
+
+template<typename T, typename... P> inline PassLocalRef<T> wrap(P&&... params)
+{
+    return wrapper<T, decltype(params)...>(std::forward<P>(params)...);
 }
 
 } // namespace JNI

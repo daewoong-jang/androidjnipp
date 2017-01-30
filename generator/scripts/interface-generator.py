@@ -820,7 +820,7 @@ class GeneratorFrontend:
                     self.processMethod(hasAnnotation(declaration, annotate_visible_method)
                                           , hasModifier(declaration, 'static')
                                           , hasAnnotation(declaration, annotate_api)
-                                          , hasAnnotation(declaration, annotate_abstract)
+                                          , hasAnnotation(declaration, annotate_abstract) or hasModifier(declaration, 'abstract')
                                           , hasModifier(declaration, 'native')
                                           , declaration.return_type, declaration.name
                                           , makeParameterList(declaration))
@@ -1195,7 +1195,7 @@ class NativesHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
         ts = (
         "static $LOCAL_REF<$CLASS_PATH> fromRef(JNI::ref_t);",
         "static $LOCAL_REF<$CLASS_PATH> fromPtr(std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>&);",
-        "template<typename... Args> static $LOCAL_REF<$CLASS_PATH> create(Args... arguments);",
+        "template<typename... T> static $LOCAL_REF<$CLASS_PATH> create(T...);",
         "template<typename T> T castTo();",
         "")
         self.puts('\n'.join(ts))
@@ -1332,7 +1332,7 @@ class ManagedHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
         self.constructors.append(parameters)
 
     def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters):
-        InterfaceHeaderGeneratorBackend.processMethod(self, is_visible or is_abstract or is_api, is_static, is_api, is_abstract, return_type, name, parameters)
+        InterfaceHeaderGeneratorBackend.processMethod(self, is_visible or is_api, is_static, is_api, is_abstract, return_type, name, parameters)
 
     def processNativeConstructor(self, name, parameters, is_abstract):
         InterfaceHeaderGeneratorBackend.processNativeConstructor(self, name, parameters, is_abstract)
