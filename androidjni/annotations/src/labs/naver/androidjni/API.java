@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Naver Labs. All rights reserved.
+ * Copyright (C) 2017 Daewoong Jang.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,40 +23,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <com/example/test/Managed/StringGenerator.h>
+package labs.naver.androidjni;
 
-#include <com/example/test/Managed/StringGeneratorClient.h>
+public @interface API {
 
-namespace com {
-namespace example {
-namespace test {
-namespace Managed {
-
-// TODO: IMPLEMENT
-void StringGenerator::INIT()
-{
-    nativeCreate();
 }
-
-// TODO: IMPLEMENT
-int32_t StringGenerator::getNumber()
-{
-    return 1315;
-}
-
-// TODO: IMPLEMENT
-std::shared_ptr<StringGeneratorClient> StringGenerator::getClient()
-{
-    return std::static_pointer_cast<StringGeneratorClient>(nativeGetClient());
-}
-
-// TODO: IMPLEMENT
-void StringGenerator::setWhat(const std::shared_ptr<void>& what)
-{
-    nativeSetWhat(what);
-}
-
-} // namespace Managed
-} // namespace test
-} // namespace example
-} // namespace com

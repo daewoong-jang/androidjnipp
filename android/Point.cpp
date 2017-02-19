@@ -42,7 +42,7 @@ void Point::INIT(int32_t x
     this->y = y;
 }
 
-void Point::INIT(std::shared_ptr<Managed::Point> src)
+void Point::INIT(const std::shared_ptr<Point>& src)
 {
     x = src->x;
     y = src->y;
@@ -74,7 +74,7 @@ bool Point::equals(int32_t x
     return this->x == x && this->y == y;
 }
 
-bool Point::equals(std::shared_ptr<void> o)
+bool Point::equals(const std::shared_ptr<void>& o)
 {
     if (this == o.get())
         return true;

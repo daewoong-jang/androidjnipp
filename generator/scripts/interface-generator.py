@@ -276,6 +276,9 @@ class GeneratorBackendOverrides:
     def internalPassObject(self, object_type):
         return object_type
 
+    def internalReturnObject(self, object_type):
+        return object_type
+
     def internalArrayObject(self, base_type):
         return base_type
 
@@ -401,8 +404,8 @@ class GeneratorBackend:
         if isAnyObjectType(actual_type):
             return self.overrides.internalTypeOfAnyObject()
         elif isObjectType(actual_type):
-            internal_type = ''.join([self.overrides.internalNamespace(), '::', internal_type])
-        return internal_type
+            internal_type = ''.join([internal_type])
+        return internal_type.replace('.', '::')
 
     def resolveExternalType(self, base_type, type_dimensions):
         actual_type = self.resolveClassTypeParameter(base_type)
@@ -412,13 +415,13 @@ class GeneratorBackend:
             return self.overrides.externalTypeOfAnyObject()
         elif isObjectType(actual_type):
             external_type = self.overrides.externalTypeOfObject(external_type)
-        return external_type
+        return external_type.replace('.', '::')
 
-    def resolvePassType(self, base_type, type_dimensions, as_reference):
+    def resolvePassType(self, base_type, type_dimensions, as_reference, is_return):
         internal_type = self.resolveInternalType(base_type, type_dimensions)
         if isObjectType(base_type):
             self.maybeUnknownTypeOfValue(base_type)
-            native_type = self.overrides.internalPassObject(internal_type)
+            native_type = self.overrides.internalReturnObject(internal_type) if is_return else self.overrides.internalPassObject(internal_type)
         else:
             use_reference = as_reference and not isPrimitiveType(base_type) and type_dimensions == 0
             native_type = ''.join(["const ", internal_type, '&']) if use_reference else internal_type
@@ -437,28 +440,32 @@ class GeneratorBackend:
                 ts = ''.join([ts, '<', self.resolveInternalType(base_type, type_dimensions), '>'])
         return ts if term is None else ''.join([ts, '(', term, ')'])
 
-    def imported(self, class_name):
-        if class_name in self.class_imports:
+    def explicitPackage(self, class_name):
+        if class_name.count('.') > 0:
             return True
         else:
             return False
 
-    def importClassPackage(self, class_name):
-        if not self.imported(class_name):
+    def explicitClassDeclaration(self, class_name):
+        name_parts = class_name.split('.')
+        return ' '.join(['namespace', ' { namespace '.join(name_parts[:-1]), '{', 'class', name_parts[-1], ';', '}' * (len(name_parts) - 1)])
+
+    def getClassPackage(self, class_name):
+        if not class_name in self.class_imports:
             return self.package_path
         return self.class_imports[class_name]
 
     def importClassDeclaration(self, class_name, namespace):
-        return ' '.join(['namespace', ' { namespace '.join(self.importClassPackage(class_name) + [namespace]), '{', 'class', class_name, ';', '}' * (len(self.importClassPackage(class_name)) + 1)])
+        return ' '.join(['namespace', ' { namespace '.join(self.getClassPackage(class_name) + [namespace]), '{', 'class', class_name, ';', '}' * (len(self.getClassPackage(class_name)) + 1)])
 
     def importClassInclude(self, class_name, namespace):
-        return ' '.join(["#include", ''.join(['<', '/'.join(self.importClassPackage(class_name)), '/', namespace, '/', class_name, ".h", '>'])])
+        return ' '.join(["#include", ''.join(['<', '/'.join(self.getClassPackage(class_name)), '/', namespace, '/', class_name, ".h", '>'])])
 
     def importClassPath(self, class_name, namespace):
-        return '::'.join(self.importClassPackage(class_name) + [namespace, class_name])
+        return '::'.join(self.getClassPackage(class_name) + [namespace, class_name])
 
     def importClassTypedef(self, class_name, namespace):
-        return '_'.join(self.importClassPackage(class_name) + [namespace, class_name])
+        return '_'.join(self.getClassPackage(class_name) + [namespace, class_name])
 
     def buildArgumentList(self, parameters, is_outbound):
         arguments = []
@@ -468,11 +475,11 @@ class GeneratorBackend:
         return arguments
 
     def buildMethodReturn(self, return_type):
-        return self.resolvePassType(getTypeName(return_type), getTypeDimensions(return_type), False)
+        return self.resolvePassType(getTypeName(return_type), getTypeDimensions(return_type), False, True)
 
     def buildParameter(self, parameter, call_by_reference):
         parameter_name = "" if parameter.name == "" else ' ' + parameter.name
-        return self.resolvePassType(parameter.base_type, parameter.dimensions, call_by_reference) + parameter_name
+        return self.resolvePassType(parameter.base_type, parameter.dimensions, call_by_reference, False) + parameter_name
 
     def buildParameters(self, parameters, call_by_reference):
         if len(parameters) > 0:
@@ -545,7 +552,7 @@ class GeneratorBackend:
         self.template = string.Template(self.template).safe_substitute({
                                              'CLASS_NAME' : self.className(),
                                              'CLASS_PATH' : self.classPath(),
-                                             'PASS_CLASS' : self.overrides.internalPassObject(self.classPath()),
+                                             'PASS_CLASS' : self.overrides.internalReturnObject(self.classPath()),
                                              })
         if self.class_attribute.native_object_field is not None:
             assert(self.class_attribute.has_native_destructor)
@@ -1099,11 +1106,12 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         if len(self.unknown_parameter_types) > 0:
             forward_declarations += '\n'
             for unknown_type in self.unknown_parameter_types:
-                class_import_headers += '\n'.join([self.importClassDeclaration(unknown_type, self.overrides.internalNamespace()),
-                                                   ' '.join(['typedef', 'class', self.importClassPath(unknown_type, self.overrides.internalNamespace()), self.importClassTypedef(unknown_type, self.overrides.internalNamespace()), ";\n"])
-                                                  ]) if self.imported(unknown_type) is not None else ''
-                forward_declarations += ''.join(["typedef ", self.importClassTypedef(unknown_type, self.overrides.internalNamespace()), ' ', unknown_type, ";\n"]) if self.imported(unknown_type) is not None \
-                else ''.join(["class ", unknown_type, ";\n"])
+                namespace = self.overrides.internalNamespace()
+                class_import_headers += '\n'.join([self.importClassDeclaration(unknown_type, namespace),
+                                                   ' '.join(['typedef', 'class', self.importClassPath(unknown_type, namespace), self.importClassTypedef(unknown_type, namespace), ";\n"])
+                                                  ]) if not self.explicitPackage(unknown_type) else ''.join([self.explicitClassDeclaration(unknown_type), '\n'])
+                forward_declarations += ''.join(["typedef ", self.importClassTypedef(unknown_type, namespace), ' ', unknown_type, ";\n"]) \
+                    if not self.explicitPackage(unknown_type) else ''
         self.template = self.template.replace("$CLASS_IMPORT_HEADERS", class_import_headers)
         self.template = self.template.replace("$CLASS_FORWARD_DECLARATIONS", forward_declarations)
         HeaderGeneratorBackend.processEOF(self)
@@ -1125,6 +1133,9 @@ class NativesHeaderGeneratorBackendOverrides(GeneratorBackendOverrides):
         return managed_files_suffix
 
     def internalPassObject(self, object_type):
+        return '$LOCAL_REF<$T>'.replace('$T', object_type)
+
+    def internalReturnObject(self, object_type):
         return '$LOCAL_REF<$T>'.replace('$T', object_type)
 
     def internalArrayObject(self, base_type):
@@ -1194,7 +1205,7 @@ class NativesHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
             self.EOL()
         ts = (
         "static $LOCAL_REF<$CLASS_PATH> fromRef(JNI::ref_t);",
-        "static $LOCAL_REF<$CLASS_PATH> fromPtr(std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>&);",
+        "static $LOCAL_REF<$CLASS_PATH> fromPtr(const std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>&);",
         "template<typename... T> static $LOCAL_REF<$CLASS_PATH> create(T...);",
         "template<typename T> T castTo();",
         "")
@@ -1231,6 +1242,9 @@ class ManagedHeaderGeneratorBackendOverrides(GeneratorBackendOverrides):
         return natives_files_suffix
 
     def internalPassObject(self, object_type):
+        return 'const std::shared_ptr<$T>&'.replace('$T', object_type)
+
+    def internalReturnObject(self, object_type):
         return 'std::shared_ptr<$T>'.replace('$T', object_type)
 
     def internalArrayObject(self, base_type):
@@ -1694,9 +1708,9 @@ class NativesCPPStubGeneratorBackend(StubGeneratorBackend):
         "    return nativeObject(ref);",
         "}",
         "",
-        "$LOCAL_REF<$CLASS_PATH> $CLASS_PATH::fromPtr(std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>& ptr)",
+        "$LOCAL_REF<$CLASS_PATH> $CLASS_PATH::fromPtr(const std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>& ptr)",
         "{",
-        "    return fromRef(reinterpret_cast<$CLASS_NAME*>(ptr->$NATIVE_OBJECT_FIELD)->refLocal());" if has_native_constructors else "    return fromRef(new JNI::ObjectReference(std::move(ptr)));",
+        "    return fromRef(reinterpret_cast<$CLASS_NAME*>(ptr->$NATIVE_OBJECT_FIELD)->refLocal());" if has_native_constructors else "    return fromRef(new JNI::ObjectReference(ptr));",
         "}",
         "")
         self.puts('\n'.join(ts))
@@ -1978,7 +1992,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         "    return nativeObject(ref);",
         "}",
         "",
-        "$LOCAL_REF<$CLASS_PATH> $CLASS_PATH::fromPtr(std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>&)",
+        "$LOCAL_REF<$CLASS_PATH> $CLASS_PATH::fromPtr(const std::shared_ptr<$EXTERNAL_NAMESPACE::$CLASS_PATH>&)",
         "{",
         "    return $LOCAL_REF<$CLASS_PATH>(); // FIXME: Error if fromPtr() is used. This method should be removed.",
         "}",
@@ -2031,6 +2045,9 @@ class ManagedCPPStubGeneratorBackendOverrides(ManagedHeaderGeneratorBackendOverr
         return 'JNI::ObjectReference*'
 
     def internalPassObject(self, object_type):
+        return 'const std::shared_ptr<$T>&'.replace('$T', object_type)
+
+    def internalReturnObject(self, object_type):
         return 'std::shared_ptr<$T>'.replace('$T', object_type)
 
 class ManagedCPPStubGeneratorBackend(StubGeneratorBackend):

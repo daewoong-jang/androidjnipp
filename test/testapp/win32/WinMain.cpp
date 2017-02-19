@@ -40,7 +40,7 @@ class HelloJniStringGeneratorClient : public StringGeneratorClient {
     void stringFromJNI(const std::string& s) override {
     }
 
-    void stringFromJNI(std::shared_ptr<java_util_Managed_Vector> v) override {
+    void stringFromJNI(const std::shared_ptr<java::util::Vector>& v) override {
     }
 
     void stringFromJNI(const std::vector<std::string>& i) override {

@@ -46,7 +46,7 @@ void Rect::INIT(int32_t left
     this->bottom = bottom;
 }
 
-void Rect::INIT(std::shared_ptr<Managed::Rect> r)
+void Rect::INIT(const std::shared_ptr<Rect>& r)
 {
     this->left = r->left;
     this->top = r->top;
@@ -54,7 +54,7 @@ void Rect::INIT(std::shared_ptr<Managed::Rect> r)
     this->bottom = r->bottom;
 }
 
-bool Rect::equals(std::shared_ptr<void> o)
+bool Rect::equals(const std::shared_ptr<void>& o)
 {
     if (this == o.get())
         return true;
@@ -126,7 +126,7 @@ void Rect::set(int32_t left
     this->bottom = bottom;
 }
 
-void Rect::set(std::shared_ptr<Managed::Rect> src)
+void Rect::set(const std::shared_ptr<Rect>& src)
 {
     this->left = src->left;
     this->top = src->top;
@@ -180,7 +180,7 @@ bool Rect::contains(int32_t left
         && this->right >= right && this->bottom >= bottom;
 }
 
-bool Rect::contains(std::shared_ptr<Managed::Rect> r)
+bool Rect::contains(const std::shared_ptr<Rect>& r)
 {
     // check for empty first
     return this->left < this->right && this->top < this->bottom
@@ -203,13 +203,13 @@ bool Rect::intersect(int32_t left
     return false;
 }
 
-bool Rect::intersect(std::shared_ptr<Managed::Rect> r)
+bool Rect::intersect(const std::shared_ptr<Rect>& r)
 {
     return intersect(r->left, r->top, r->right, r->bottom);
 }
 
-bool Rect::setIntersect(std::shared_ptr<Managed::Rect> a
-    , std::shared_ptr<Managed::Rect> b)
+bool Rect::setIntersect(const std::shared_ptr<Rect>& a
+    , const std::shared_ptr<Rect>& b)
 {
     if (a->left < b->right && b->left < a->right && a->top < b->bottom && b->top < a->bottom) {
         left = std::max(a->left, b->left);
@@ -229,8 +229,8 @@ bool Rect::intersects(int32_t left
     return this->left < right && left < this->right && this->top < bottom && top < this->bottom;
 }
 
-bool Rect::intersects(std::shared_ptr<Managed::Rect> a
-    , std::shared_ptr<Managed::Rect> b)
+bool Rect::intersects(const std::shared_ptr<Rect>& a
+    , const std::shared_ptr<Rect>& b)
 {
     return a->left < b->right && b->left < a->right && a->top < b->bottom && b->top < a->bottom;
 }

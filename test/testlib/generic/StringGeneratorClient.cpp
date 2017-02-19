@@ -41,7 +41,7 @@ void StringGeneratorClient::stringFromJNI(const std::string& s)
 }
 
 // TODO: IMPLEMENT
-void StringGeneratorClient::stringFromJNI(std::shared_ptr<Managed::Vector> v)
+void StringGeneratorClient::stringFromJNI(const std::shared_ptr<Vector>& v)
 {
 }
 

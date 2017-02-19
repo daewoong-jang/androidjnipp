@@ -66,19 +66,19 @@ void Vector::INIT(int32_t capacity
 }
 
 void Vector::add(int32_t location
-    , std::shared_ptr<void> object)
+    , const std::shared_ptr<void>& object)
 {
     std::vector<std::shared_ptr<void>>::iterator it = vector(*m_private).m_data.begin();
     vector(*m_private).m_data.insert(it + location, object);
 }
 
-bool Vector::add(std::shared_ptr<void> object)
+bool Vector::add(const std::shared_ptr<void>& object)
 {
     vector(*m_private).m_data.push_back(object);
     return true;
 }
 
-void Vector::addElement(std::shared_ptr<void> object)
+void Vector::addElement(const std::shared_ptr<void>& object)
 {
     vector(*m_private).m_data.push_back(object);
 }
@@ -99,7 +99,7 @@ std::shared_ptr<void> Vector::clone()
     return 0;
 }
 
-bool Vector::contains(std::shared_ptr<void> object)
+bool Vector::contains(const std::shared_ptr<void>& object)
 {
     if (std::find(vector(*m_private).m_data.begin(), vector(*m_private).m_data.end(), static_cast<std::shared_ptr<void>>(object)) != vector(*m_private).m_data.end())
         return true;
@@ -117,7 +117,7 @@ void Vector::ensureCapacity(int32_t minimumCapacity)
 }
 
 // TODO: IMPLEMENT
-bool Vector::equals(std::shared_ptr<void> object)
+bool Vector::equals(const std::shared_ptr<void>& object)
 {
     return 0;
 }
@@ -138,7 +138,7 @@ int32_t Vector::hashCode()
     return -1;
 }
 
-int32_t Vector::indexOf(std::shared_ptr<void> object)
+int32_t Vector::indexOf(const std::shared_ptr<void>& object)
 {
     std::vector<std::shared_ptr<void>>::iterator it = 
         std::find(vector(*m_private).m_data.begin(), vector(*m_private).m_data.end(), static_cast<std::shared_ptr<void>>(object));
@@ -149,7 +149,7 @@ int32_t Vector::indexOf(std::shared_ptr<void> object)
     return -1;        
 }
 
-int32_t Vector::indexOf(std::shared_ptr<void> object
+int32_t Vector::indexOf(const std::shared_ptr<void>& object
     , int32_t location)
 {
     std::vector<std::shared_ptr<void>>::iterator it = 
@@ -161,7 +161,7 @@ int32_t Vector::indexOf(std::shared_ptr<void> object
     return -1;
 }
 
-void Vector::insertElementAt(std::shared_ptr<void> object
+void Vector::insertElementAt(const std::shared_ptr<void>& object
     , int32_t location)
 {
     add(location, object);
@@ -179,13 +179,13 @@ std::shared_ptr<void> Vector::lastElement()
 }
 
 // TODO: IMPLEMENT
-int32_t Vector::lastIndexOf(std::shared_ptr<void> object)
+int32_t Vector::lastIndexOf(const std::shared_ptr<void>& object)
 {
     return 0;
 }
 
 // TODO: IMPLEMENT
-int32_t Vector::lastIndexOf(std::shared_ptr<void> object
+int32_t Vector::lastIndexOf(const std::shared_ptr<void>& object
     , int32_t location)
 {
     return 0;
@@ -200,7 +200,7 @@ std::shared_ptr<void> Vector::remove(int32_t location)
     return ret;
 }
 
-bool Vector::remove(std::shared_ptr<void> object)
+bool Vector::remove(const std::shared_ptr<void>& object)
 {
     if (vector(*m_private).m_data.erase(std::find(vector(*m_private).m_data.begin(), vector(*m_private).m_data.end(), static_cast<std::shared_ptr<void>>(object))) != vector(*m_private).m_data.end())
         return true;
@@ -212,7 +212,7 @@ void Vector::removeAllElements()
     clear();
 }
 
-bool Vector::removeElement(std::shared_ptr<void> object)
+bool Vector::removeElement(const std::shared_ptr<void>& object)
 {
     return remove(object);
 }
@@ -224,13 +224,13 @@ void Vector::removeElementAt(int32_t location)
 
 // TODO: IMPLEMENT
 std::shared_ptr<void> Vector::set(int32_t location
-    , std::shared_ptr<void> object)
+    , const std::shared_ptr<void>& object)
 {
     return 0;
 }
 
 // TODO: IMPLEMENT
-void Vector::setElementAt(std::shared_ptr<void> object
+void Vector::setElementAt(const std::shared_ptr<void>& object
     , int32_t location)
 {
 }

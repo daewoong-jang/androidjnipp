@@ -50,7 +50,7 @@ std::shared_ptr<T> toManaged(const PassLocalRef<U>& ref)
 }
 
 template<typename T, typename U>
-PassLocalRef<T> toNative(std::shared_ptr<U>& ref)
+PassLocalRef<T> toNative(const std::shared_ptr<U>& ref)
 {
     return (ref) ? T::fromPtr(ref) : nullptr;
 }
@@ -60,7 +60,7 @@ template<> inline std::shared_ptr<void> toManaged(const PassLocalRef<AnyObject>&
     return sharePtr(ref.get());
 }
 
-template<> inline PassLocalRef<AnyObject> toNative(std::shared_ptr<void>& ref)
+template<> inline PassLocalRef<AnyObject> toNative(const std::shared_ptr<void>& ref)
 {
     return JNI::adoptRef(new ObjectReference(ref), reinterpret_cast<AnyObject*>(nullptr));
 }

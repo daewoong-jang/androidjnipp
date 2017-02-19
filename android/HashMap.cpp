@@ -73,17 +73,17 @@ std::shared_ptr<void> HashMap::clone()
     return nullptr;
 }
 
-bool HashMap::containsKey(std::shared_ptr<void> key)
+bool HashMap::containsKey(const std::shared_ptr<void>& key)
 {
     return false;
 }
 
-bool HashMap::containsValue(std::shared_ptr<void> value)
+bool HashMap::containsValue(const std::shared_ptr<void>& value)
 {
     return false;
 }
 
-std::shared_ptr<void> HashMap::get(std::shared_ptr<void> key)
+std::shared_ptr<void> HashMap::get(const std::shared_ptr<void>& key)
 {
     return map(*m_private).m_map[key];
 }
@@ -93,13 +93,13 @@ bool HashMap::isEmpty()
     return map(*m_private).m_map.empty();
 }
 
-std::shared_ptr<void> HashMap::put(std::shared_ptr<void> key, std::shared_ptr<void> value)
+std::shared_ptr<void> HashMap::put(const std::shared_ptr<void>& key, const std::shared_ptr<void>& value)
 {
     map(*m_private).m_map.insert(std::pair<std::shared_ptr<void>, std::shared_ptr<void>>(key, value));
     return nullptr;
 }
 
-std::shared_ptr<void> HashMap::remove(std::shared_ptr<void> key)
+std::shared_ptr<void> HashMap::remove(const std::shared_ptr<void>& key)
 {
     map(*m_private).m_map.erase(key);
     return nullptr;
