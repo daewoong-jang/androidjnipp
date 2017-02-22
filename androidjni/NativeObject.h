@@ -75,7 +75,7 @@ template<typename T> inline T* adoptPtr(ref_t ref, NativeObject* ptr)
 
 template<typename T, typename... P> inline PassLocalRef<T> wrapper(P... params)
 {
-    return T::create<typename normalize_creation_param<P>::type...>(std::forward<P>(params)...);
+    return T::template create<typename normalize_creation_param<P>::type...>(std::forward<P>(params)...);
 }
 
 template<typename T, typename... P> inline PassLocalRef<T> wrap(P&&... params)

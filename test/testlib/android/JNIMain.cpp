@@ -25,7 +25,7 @@
 
 #include <androidjni/JavaVM.h>
 
-#include <com/example/test/StringGeneratorNativesBase.h> // for registerClass()
+#include <com/example/test/Natives/StringGenerator.h> // for registerClass()
 
 /* This is a trivial JNI example where we use a native method
  * to return a new VM String. See the corresponding Java source
