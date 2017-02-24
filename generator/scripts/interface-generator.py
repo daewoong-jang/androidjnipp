@@ -234,7 +234,7 @@ NativeDestructor = collections.namedtuple(annotate_dtor, 'name parameters is_abs
 NativeObjectField = collections.namedtuple(annotate_ptr, 'name base_type')
 NativeMethod = collections.namedtuple('NativeMethod', 'name parameters is_static is_abstract return_type')
 NativeField = collections.namedtuple('NativeField', 'name initializer base_type')
-NativeMethodRegistry = collections.namedtuple('NativeMethodRegistry', 'name signatures function_name')
+NativeMethodRegistry = collections.namedtuple('NativeMethodRegistry', 'name signatures type')
 
 class GeneratorBackendOverrides:
     def __init__(self):
@@ -1785,6 +1785,15 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         signature += self.buildJNISignature(getTypeName(return_type), getTypeDimensions(return_type))
         return signature
 
+    def buildFunctionCType(self, is_static, parameters, return_type):
+        ctype = '(' + self.resolveExternalType(getTypeName(return_type), getTypeDimensions(return_type))
+        ctype += " (*)(JNIEnv*, "
+        ctype += "jclass" if is_static else "jobject"
+        for parameter in parameters:
+            ctype += ', ' + self.resolveExternalType(parameter.base_type, parameter.dimensions)
+        ctype += '))'
+        return ctype
+
     def implementDefaultConstructor(self):
         self.puts("$CLASS_PATH::$CLASS_PATH()\n")
         initializers = ""
@@ -1816,7 +1825,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
             native_methods = []
             for native_method in self.native_method_registry:
                 native_methods.append(''.join(["{ \"", native_method.name, "\", \"", native_method.signatures, "\",\n"]))
-                native_methods.append(''.join(["  (void*)$CLASS_NAME::NativeBindings::", native_method.function_name, " },\n"]))
+                native_methods.append(''.join(["  (void*)", native_method.type, "$CLASS_NAME::NativeBindings::", native_method.name, " },\n"]))
 
             ts = (
             "static const JNINativeMethod k${CLASS_NAME}NativeMethods[] = {",
@@ -1858,7 +1867,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
             self.EOL()
 
     def implementNativeConstructor(self, name, parameters):
-        self.native_method_registry.append(NativeMethodRegistry(name, self.buildJNISignatures(parameters, 'void'), name))
+        self.native_method_registry.append(NativeMethodRegistry(name, self.buildJNISignatures(parameters, 'void'), self.buildFunctionCType(False, parameters, 'void')))
 
         ts = (
         "static void %1(JNIEnv*, jobject scope$PRECEDING_COMMA$JNI_PARAMETERS)",
@@ -1878,7 +1887,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
 
     def implementNativeDestructor(self, name):
         assert(self.class_attribute.has_native_constructors)
-        self.native_method_registry.append(NativeMethodRegistry(name, self.buildJNISignatures([], 'void'), name))
+        self.native_method_registry.append(NativeMethodRegistry(name, self.buildJNISignatures([], 'void'), self.buildFunctionCType(False, [], 'void')))
 
         ts = (
         "static void %1(JNIEnv*, jobject scope)",
@@ -1889,7 +1898,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         self.EOL()
 
     def implementNativeBinding(self, is_static, is_abstract, return_type, name, parameters):
-        self.native_method_registry.append(NativeMethodRegistry(name, self.buildJNISignatures(parameters, return_type), name))
+        self.native_method_registry.append(NativeMethodRegistry(name, self.buildJNISignatures(parameters, return_type), self.buildFunctionCType(is_static, parameters, return_type)))
 
         has_result = return_type != 'void'
 
