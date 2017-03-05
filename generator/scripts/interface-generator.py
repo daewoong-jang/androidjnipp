@@ -146,7 +146,7 @@ managed_files_suffix = 'Managed'
 any_object = '$ANYOBJECT'
 cpp_string = '$CPPSTRING'
 
-annotate_abstract = 'AbstractNativeMethod'
+annotate_abstract = 'AbstractMethod'
 annotate_api = 'API'
 annotate_ctor = 'NativeConstructor'
 annotate_dtor = 'NativeDestructor'
