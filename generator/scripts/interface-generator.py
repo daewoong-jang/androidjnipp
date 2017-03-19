@@ -2299,8 +2299,10 @@ def generateBindings(frontend, backend, source_file, target_file):
 
 def generatedHeaderLocation(target_path, source_file, is_managed):
     target_header_path = ''.join([target_path, source_file.package, '/', managed_files_suffix if is_managed else natives_files_suffix])
-    if not os.path.exists(target_header_path):
+    try:
         os.makedirs(target_header_path)
+    except:
+        pass
     return ''.join([target_header_path, '/', source_file.filename_only, ".h"])
 
 def generateBindingsHeader(source_file, output_path):
