@@ -234,7 +234,7 @@ NativeConstructor = collections.namedtuple(annotate_ctor, 'name parameters is_ab
 NativeDestructor = collections.namedtuple(annotate_dtor, 'name parameters is_abstract')
 NativeObjectField = collections.namedtuple(annotate_ptr, 'name base_type')
 NativeMethod = collections.namedtuple('NativeMethod', 'name parameters is_static is_abstract return_type')
-NativeField = collections.namedtuple('NativeField', 'name initializer base_type')
+NativeField = collections.namedtuple('NativeField', 'name initializer base_type accessed_by_native')
 NativeMethodRegistry = collections.namedtuple('NativeMethodRegistry', 'name signatures type')
 
 class GeneratorBackendOverrides:
@@ -316,6 +316,7 @@ class GeneratorBackend:
             self.has_abstract_method = False
             self.has_abstract_native_method = False
             self.native_object_field = None
+            self.inner_classes = []
 
     def __init__(self, overrides):
         self.package_name = ""
@@ -390,7 +391,9 @@ class GeneratorBackend:
     def maybeUnknownTypeOfValue(self, base_type):
         if not isObjectType(base_type) or isAnyObjectType(base_type) or self.isClassTypeParameter(base_type):
             return False
-        if base_type not in self.unknown_parameter_types:
+        elif base_type in self.class_attribute.inner_classes:
+            return False
+        elif base_type not in self.unknown_parameter_types:
             self.unknown_parameter_types.append(base_type)
             return True
         return False
@@ -480,9 +483,9 @@ class GeneratorBackend:
     def buildMethodReturn(self, return_type):
         return self.resolvePassType(getTypeName(return_type), getTypeDimensions(return_type), False, False, True)
 
-    def buildParameter(self, parameter, call_by_reference, as_referenced_ptr):
+    def buildParameter(self, parameter, call_by_reference, as_referenced_ptr, is_return=False):
         parameter_name = "" if parameter.name == "" else ' ' + parameter.name
-        return self.resolvePassType(parameter.base_type, parameter.dimensions, call_by_reference, as_referenced_ptr, False) + parameter_name
+        return self.resolvePassType(parameter.base_type, parameter.dimensions, call_by_reference, as_referenced_ptr, is_return) + parameter_name
 
     def buildParameters(self, parameters, call_by_reference, as_referenced_ptr):
         if len(parameters) > 0:
@@ -541,6 +544,10 @@ class GeneratorBackend:
         LOG.V('processNamespaceEnd: ' + name)
         self.namespace_stack.pop()
 
+    def processClass(self, name):
+        LOG.V('processClass: ' + name)
+        self.class_attribute.inner_classes.append(name)
+
     def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
         LOG.V('processClassBegin: ' + name)
         self.class_attribute_stack.append(self.class_attribute)
@@ -590,10 +597,10 @@ class GeneratorBackend:
         if is_abstract and not self.class_attribute.has_abstract_native_method:
             self.has_abstract_native_method = False
 
-    def processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name):
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
         LOG.V('processField: ' + name)
-        if accessed_by_native and (not is_static and not is_final or initializer is None):
-            self.native_fields.append(NativeField(name, initializer, base_type))
+        if (accessed_by_native or is_api) and not is_static and (not is_final or initializer is None):
+            self.native_fields.append(NativeField(name, initializer, base_type, accessed_by_native))
 
     def processSupplement(self, supplement_for_managed, supplement_for_natives):
         LOG.V('processSupplement: ')
@@ -843,13 +850,14 @@ class GeneratorFrontend:
                 else:
                     self.backend.processField(hasAnnotation(declaration, annotate_visible_field)
                                          , hasModifier(declaration, 'static')
+                                         , hasAnnotation(declaration, annotate_api)
                                          , hasModifier(declaration, 'final')
                                          , getTypeName(declaration.type)
                                          , declaration.variable_declarators[0].variable.dimensions
                                          , declaration.variable_declarators[0].initializer
                                          , declaration.variable_declarators[0].variable.name)
             elif type(declaration) is m.ClassDeclaration:
-                self.processClass(declaration)
+                self.backend.processClass(declaration.name)
             else:
                 continue
 
@@ -924,7 +932,7 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         ts = string.Template('\n'.join(ts)).safe_substitute({
                                              'EXPORT_MACRO' : 'CLASS_EXPORT ' if not isPrimitiveType(typename) else '',
                                              'FIELD_SPECIFIER' : 'static ' if is_static else '',
-                                             'FIELD_TYPE' : self.buildParameter(Parameter(False, typename, dimensions, ""), False, False),
+                                             'FIELD_TYPE' : self.buildParameter(Parameter(False, typename, dimensions, ""), False, False, True),
                                              'FIELD_NAME' : name,
                                              'FIELD_INITIALIZER' : (' = ' + getInitializerValue(initializer, typename)) if initializer is not None and isPrimitiveType(typename) else '',
                                              })
@@ -937,7 +945,7 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         ts = string.Template('\n'.join(ts)).safe_substitute({
                                              'EXPORT_MACRO' : 'CLASS_EXPORT ' if is_static else '',
                                              'FIELD_SPECIFIER' : 'static ' if is_static else '',
-                                             'FIELD_TYPE' : self.buildParameter(Parameter(False, typename, dimensions, ""), False, False),
+                                             'FIELD_TYPE' : self.buildParameter(Parameter(False, typename, dimensions, ""), False, False, True),
                                              'FIELD_NAME' : name,
                                              })
         self.puts(ts)
@@ -1045,7 +1053,7 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
 
     def processNativeObjectField(self, name, base_type):
         HeaderGeneratorBackend.processNativeObjectField(self, name, base_type)
-        self.processField(True, False, False, base_type, 0, None, name)
+        self.processField(True, False, False, False, base_type, 0, None, name)
 
     def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters, call_by_reference):
         HeaderGeneratorBackend.processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters, call_by_reference)
@@ -1089,10 +1097,8 @@ class InterfaceHeaderGeneratorBackend(HeaderGeneratorBackend):
         self.DEC()
         self.EOL()
 
-    def processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name):
-        HeaderGeneratorBackend.processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name)
-        if accessed_by_native is False:
-            return
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
+        HeaderGeneratorBackend.processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name)
 
         self.setVisibility(Visibility.PUBLIC)
         self.INC()
@@ -1188,7 +1194,7 @@ class NativesHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
                                              'FIELD_SPECIFIER' : 'STATIC_' if is_static else '',
                                              'FIELD_MACRO' : 'FIELD_INTERFACE',
                                              'FIELD_NAME' : name,
-                                             'FIELD_PARAMETER' : self.buildParameter(Parameter(False, typename, dimensions, ""), False, True),
+                                             'FIELD_PARAMETER' : self.buildParameter(Parameter(False, typename, dimensions, ""), False, True, True),
                                              })
         self.puts(ts)
 
@@ -1216,6 +1222,11 @@ class NativesHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
         self.puts('\n'.join(ts))
         self.DEC()
         self.EOL()
+
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
+        if not accessed_by_native:
+            return
+        InterfaceHeaderGeneratorBackend.processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name)
 
     def processSupplement(self, supplement_for_managed, supplement_for_natives):
         if supplement_for_natives is None:
@@ -1290,6 +1301,21 @@ class ManagedHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
             self.puts("CLASS_EXPORT virtual void INIT(%1);\n", self.buildParameters(constructor, False, True))
         self.EOL()
 
+    def processClass(self, name):
+        InterfaceHeaderGeneratorBackend.processClass(self, name)
+
+        ts = (
+        "class $CLASS_NAME;",
+        "friend class $CLASS_NAME;",
+        "")
+        ts = string.Template('\n'.join(ts)).safe_substitute({
+                                                'CLASS_NAME' : name,
+                                                })
+        self.INC()
+        self.puts(ts)
+        self.DEC()
+        self.EOL()
+
     def processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors):
         InterfaceHeaderGeneratorBackend.processClassBegin(self, name, export_macro, extends, class_type_parameters, has_trivial_constructor, has_native_constructors)
 
@@ -1359,6 +1385,11 @@ class ManagedHeaderGeneratorBackend(InterfaceHeaderGeneratorBackend):
     def processNativeDestructor(self, name, parameters, is_abstract):
         InterfaceHeaderGeneratorBackend.processNativeDestructor(self, name, parameters, is_abstract)
         self.processNativeMethod(False, is_abstract, 'void', name, parameters)
+
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
+        if not accessed_by_native and not is_api:
+            return
+        InterfaceHeaderGeneratorBackend.processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name)
 
     def processSupplement(self, supplement_for_managed, supplement_for_natives):
         if supplement_for_managed is None:
@@ -1530,7 +1561,7 @@ class StubGeneratorBackend(GeneratorBackend):
 
     def processNativeObjectField(self, name, base_type):
         GeneratorBackend.processNativeObjectField(self, name, base_type)
-        self.processField(True, False, False, base_type, 0, None, name)
+        self.processField(True, False, False, False, base_type, 0, None, name)
 
     def processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters, call_by_reference):
         GeneratorBackend.processMethod(self, is_visible, is_static, is_api, is_abstract, return_type, name, parameters, call_by_reference)
@@ -1558,8 +1589,8 @@ class StubGeneratorBackend(GeneratorBackend):
         assert(is_static or self.class_attribute.has_native_constructors)
         self.pending_native_methods.append(NativeMethod(name, parameters, is_static, is_abstract, return_type))
 
-    def processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name):
-        GeneratorBackend.processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name)
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
+        GeneratorBackend.processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name)
         if not accessed_by_native:
             return
 
@@ -1632,6 +1663,8 @@ class NativesCPPStubGeneratorBackend(StubGeneratorBackend):
         if len(self.native_fields) > 0:
             counter = 0
             for native_field in self.native_fields:
+                if not native_field.accessed_by_native:
+                    continue
                 initializers += ": " if counter == 0 else ", "
                 initializers += native_field.name + "(NativeObject::m_bind)\n"
                 counter += 1
@@ -1804,6 +1837,8 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         if len(self.native_fields) > 0:
             counter = 0
             for native_field in self.native_fields:
+                if not native_field.accessed_by_native:
+                    continue
                 initializers += ": " if counter == 0 else ", "
                 initializers += native_field.name + "(NativeObject::m_bind)\n"
                 counter += 1
@@ -2019,7 +2054,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
         self.puts('\n'.join(ts))
         self.EOL()
 
-    def processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name):
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
         if not accessed_by_native:
             return
 
@@ -2045,7 +2080,7 @@ class NativesJNIStubGeneratorBackend(StubGeneratorBackend):
             self.puts(ts)
             self.EOL()
 
-        StubGeneratorBackend.processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name)
+        StubGeneratorBackend.processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name)
 
 class ManagedCPPStubGeneratorBackendOverrides(ManagedHeaderGeneratorBackendOverrides):
     def __init__(self):
@@ -2261,9 +2296,9 @@ class ManagedCPPStubGeneratorBackend(StubGeneratorBackend):
         self.puts(ts)
         self.EOL()
 
-    def processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name):
-        GeneratorBackend.processField(self, accessed_by_native, is_static, is_final, base_type, dimensions, initializer, name)
-        if not accessed_by_native or not is_static:
+    def processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name):
+        GeneratorBackend.processField(self, accessed_by_native, is_static, is_api, is_final, base_type, dimensions, initializer, name)
+        if (not accessed_by_native and not is_api) or not is_static:
             return
 
         if is_final and initializer is not None:
