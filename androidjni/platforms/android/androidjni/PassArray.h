@@ -34,7 +34,7 @@ namespace JNI {
 template<typename T>
 class JNI_EXPORT PassArray final {
 public:
-    PassArray(const T* data, size_t count, bool copyData = false)
+    PassArray(const T* data, size_t count, bool = false)
         : m_data(data)
         , m_count(count)
         , m_ref(ArrayFunctions<T>::newArrayObject(m_data, m_count))
